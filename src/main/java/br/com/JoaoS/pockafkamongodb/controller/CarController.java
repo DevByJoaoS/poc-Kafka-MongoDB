@@ -23,6 +23,11 @@ public class CarController {
         return this.carService.create(car);
     }
 
+    @PutMapping
+    public Car updateCar(@RequestBody Car car) {
+        return this.carService.updateCar(car);
+    }
+
     @GetMapping
     public List<Car> getAllCars() {
         return this.carService.findAll();

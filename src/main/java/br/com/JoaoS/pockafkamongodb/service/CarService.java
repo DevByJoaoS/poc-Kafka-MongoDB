@@ -1,10 +1,12 @@
 package br.com.JoaoS.pockafkamongodb.service;
 
+import br.com.JoaoS.pockafkamongodb.exception.CarException;
 import br.com.JoaoS.pockafkamongodb.model.Car;
 import br.com.JoaoS.pockafkamongodb.repository.CarRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +37,12 @@ public class CarService {
     }
 
     public Car updateCar(Car car){
+        Car existingCar = this.carRepository.findById(car.getId()).orElse(null);
+
+        if(Objects.isNull(existingCar)){
+            throw new CarException("No car found to update", HttpStatus.BAD_REQUEST);
+        }
+
         return this.carRepository.save(car);
     }
 
@@ -43,41 +51,61 @@ public class CarService {
     }
 
     public Car findById(String id) {
-        return this.carRepository.findById(id).orElse(null);
+        Car car =  this.carRepository.findById(id).orElse(null);
+
+        if(Objects.isNull(car)){
+            throw new CarException("No car found with this id", HttpStatus.BAD_REQUEST);
+        }
+
+        return car;
     }
 
     public Car findByModel(String model) {
-        return this.carRepository.findByModel(model).orElse(null);
+        Car car = this.carRepository.findByModel(model).orElse(null);
+
+        if(Objects.isNull(car)){
+            throw new CarException("We don't have this model in stock", HttpStatus.BAD_REQUEST);
+        }
+
+        return car;
     }
 
     public void deleteById(String id){
+        Car car =  this.carRepository.findById(id).orElse(null);
+
+        if(Objects.isNull(car)){
+            throw new CarException("No car found to delete", HttpStatus.BAD_REQUEST);
+        }
+
         this.carRepository.deleteById(id);
     }
 
     public void sendCarOrder(Car car) {
+        if(Objects.isNull(car.getId()) && Objects.isNull(car.getModel())){
+            throw new CarException("You must fill either the id or the model to order a car", HttpStatus.BAD_REQUEST);
+        }
+
         kafkaTemplate.send(CAR_TOPIC, car);
     }
 
     public void carOrder(Car car) {
-        Car existingCar = findById(car.getId());
+        Car existingCar = this.carRepository.findById(car.getId()).orElse(null);
         if(Objects.isNull(existingCar)) {
-            existingCar = findByModel(car.getModel());
+            existingCar = this.carRepository.findByModel(car.getModel()).orElse(null);
         }
 
         if(Objects.isNull(existingCar)){
-            log.info("There is no {} in the stock", car.getModel());
-        } else {
+            log.info("There is no {} in stock", car.getModel());
+        }else {
+            existingCar.setQuantity(existingCar.getQuantity() - 1);
 
-            existingCar.setQuantity(existingCar.getQuantity()-1);
-
-            if(existingCar.getQuantity() == 0){
+            if (existingCar.getQuantity() == 0) {
                 log.info("Car model {} out of stock, last order accepted", car.getModel());
                 deleteById(existingCar.getId());
-            }else {
+            } else {
                 log.info("Car order completed");
                 updateCar(existingCar);
             }
-
         }
     }
 
